@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Restaurant Theme - Light Mode */
+    --background: 35 25% 97%;
+    --foreground: 25 35% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 25 35% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 25 35% 15%;
+
+    /* Warm red-orange for fried chicken branding */
+    --primary: 12 88% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Golden yellow accent */
+    --secondary: 42 95% 60%;
+    --secondary-foreground: 25 35% 15%;
+
+    --muted: 35 20% 92%;
+    --muted-foreground: 25 15% 45%;
+
+    /* Warm brown accent */
+    --accent: 25 45% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 35 20% 88%;
+    --input: 35 20% 88%;
+    --ring: 12 88% 55%;
+
+    --radius: 0.75rem;
+
+    /* Status colors */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(12 88% 55%), hsl(25 88% 50%));
+    --gradient-gold: linear-gradient(135deg, hsl(42 95% 60%), hsl(38 90% 55%));
+    
+    /* Sidebar */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 25 35% 15%;
+    --sidebar-primary: 12 88% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 35 25% 95%;
+    --sidebar-accent-foreground: 25 35% 15%;
+    --sidebar-border: 35 20% 88%;
+    --sidebar-ring: 12 88% 55%;
+  }
+
+  .dark {
+    /* Restaurant Theme - Dark Mode */
+    --background: 25 25% 12%;
+    --foreground: 35 20% 92%;
+
+    --card: 25 22% 16%;
+    --card-foreground: 35 20% 92%;
+
+    --popover: 25 22% 16%;
+    --popover-foreground: 35 20% 92%;
+
+    /* Deep red with gold accents */
+    --primary: 12 75% 48%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Gold accent for dark mode */
+    --secondary: 42 85% 55%;
+    --secondary-foreground: 25 25% 12%;
+
+    --muted: 25 18% 22%;
+    --muted-foreground: 35 15% 65%;
+
+    /* Warm brown accent */
+    --accent: 25 40% 45%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 75% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 25 18% 24%;
+    --input: 25 18% 24%;
+    --ring: 12 75% 48%;
+
+    /* Status colors for dark mode */
+    --success: 142 65% 42%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 85% 48%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 82% 45%;
+    --info-foreground: 0 0% 100%;
+
+    /* Sidebar dark */
+    --sidebar-background: 25 25% 12%;
+    --sidebar-foreground: 35 20% 92%;
+    --sidebar-primary: 12 75% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 25 22% 18%;
+    --sidebar-accent-foreground: 35 20% 92%;
+    --sidebar-border: 25 18% 24%;
+    --sidebar-ring: 12 75% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
