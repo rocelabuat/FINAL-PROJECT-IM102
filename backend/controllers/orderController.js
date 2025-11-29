@@ -1,3 +1,4 @@
+// src/backend/controllers/orderController.js
 const pool = require('../db');
 
 /**
@@ -6,7 +7,6 @@ const pool = require('../db');
 const now = () => new Date();
 
 const isOnlinePaymentMethod = (method) => {
-  // 'gcash' and 'cod' are considered online (COD = cash on delivery)
   return method === 'gcash' || method === 'cod';
 };
 
@@ -17,12 +17,11 @@ const isOnlinePaymentMethod = (method) => {
 exports.createOrder = async (req, res) => {
   const {
     firstName, lastName, phone, address, barangay,
-    city, province, postal, gps_lat, gps_lng,
+    city, province, postal,
     payment_method = 'cash', gcash_ref,
     subtotal = 0, delivery_fee = 0, tax = 0, total = 0,
     items,
-    amount_received = null, // optional: provided by staff for walk-ins or cash confirmations
-    order_source // optional: 'online' or 'walkin'; fallback determined below
+    order_source
   } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
@@ -49,29 +48,22 @@ exports.createOrder = async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    // Determine order_source:
     const resolvedOrderSource = order_source || (userId ? 'online' : 'walkin');
 
-    // Determine initial statuses and payment status
     let status = 'unverified';
     let payment_status = 'unverified';
 
-    // ----------- UPDATE: Walk-in cash orders -------------
     if (resolvedOrderSource === 'walkin') {
       if (payment_method === 'cash' || payment_method === 'card') {
-        if (amount_received !== null && Number(amount_received) >= Number(total)) {
-          status = 'pending';
-          payment_status = 'paid';
-        } else {
-          status = 'pending';
-          payment_status = payment_method === 'card' ? 'paid' : 'pending';
-        }
+        status = 'pending';
+        payment_status = payment_method === 'card' ? 'paid' : 'pending';
       } else if (isOnlinePaymentMethod(payment_method)) {
         status = 'unverified';
         payment_status = 'unverified';
       }
     } else {
-      if (isOnlinePaymentMethod(payment_method)) {
+      // Online order
+      if (payment_method === 'cod' || payment_method === 'gcash') {
         status = 'unverified';
         payment_status = 'unverified';
       } else {
@@ -80,23 +72,15 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    // Compute change if amount_received provided
-    let computedChange = null;
-    if (amount_received !== null) {
-      const amt = Number(amount_received);
-      const t = Number(total);
-      computedChange = Number((amt - t).toFixed(2));
-    }
-
     const createdAt = now();
+    const initialNotified = (resolvedOrderSource === 'online' && (payment_method === 'cod' || payment_method === 'gcash')) ? 1 : 0;
 
-    // Insert order
     const [orderResult] = await connection.query(
       `INSERT INTO orders
-        (user_id, firstName, lastName, phone, address, barangay, city, province, postal, gps_lat, gps_lng,
-         payment_method, gcash_ref, subtotal, delivery_fee, tax, total, amount_received, change_amount,
-         order_source, notified, payment_verified_by, verified_at, items, created_at, status, payment_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (user_id, firstName, lastName, phone, address, barangay, city, province, postal,
+         payment_method, gcash_ref, subtotal, delivery_fee, tax, total,
+         order_source, notified, items, status, payment_status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         firstName || null,
@@ -107,30 +91,23 @@ exports.createOrder = async (req, res) => {
         city || null,
         province || null,
         postal || null,
-        gps_lat || null,
-        gps_lng || null,
         payment_method,
         gcash_ref || null,
         subtotal,
         delivery_fee,
         tax,
         total,
-        amount_received !== null ? Number(amount_received) : null,
-        computedChange !== null ? computedChange : null,
         resolvedOrderSource,
-        0, // notified default 0
-        null, // payment_verified_by
-        null, // verified_at
+        initialNotified,
         JSON.stringify(items),
-        createdAt,
         status,
-        payment_status
+        payment_status,
+        createdAt
       ]
     );
 
     const orderId = orderResult.insertId;
 
-    // insert order items into order_items table
     const itemPromises = items.map(item =>
       connection.query(
         `INSERT INTO order_items (order_id, product_id, name, price, quantity, total_price)
@@ -148,13 +125,11 @@ exports.createOrder = async (req, res) => {
       message: "Order created successfully",
       status,
       payment_status,
-      order_source: resolvedOrderSource
+      order_source: resolvedOrderSource,
+      notified: initialNotified
     });
   } catch (err) {
-    if (connection) {
-      try { await connection.rollback(); } catch (_) {}
-      try { connection.release(); } catch (_) {}
-    }
+    if (connection) { try { await connection.rollback(); } catch (_) {} try { connection.release(); } catch (_) {} }
     console.error("CREATE ORDER ERROR:", err);
     res.status(500).json({ message: "Failed to create order", error: err.message });
   }
@@ -175,7 +150,10 @@ exports.getUserOrders = async (req, res) => {
     const ordersWithItems = await Promise.all(
       ordersRows.map(async order => {
         const [items] = await pool.query(`SELECT * FROM order_items WHERE order_id=?`, [order.id]);
-        return { ...order, items };
+        return {
+          ...order,
+          items
+        };
       })
     );
 
@@ -208,7 +186,10 @@ exports.getOrders = async (req, res) => {
     const ordersWithItems = await Promise.all(
       ordersRows.map(async order => {
         const [items] = await pool.query(`SELECT * FROM order_items WHERE order_id=?`, [order.id]);
-        return { ...order, items };
+        return {
+          ...order,
+          items
+        };
       })
     );
 
@@ -229,14 +210,14 @@ exports.submitGcashReference = async (req, res) => {
 
   try {
     const [result] = await pool.query(
-      `UPDATE orders SET gcash_ref=?, payment_status='unverified', status='unverified', order_source='online' WHERE id=? AND payment_method='gcash'`,
+      `UPDATE orders SET gcash_ref=?, payment_status='unverified', status='unverified', order_source='online', notified=1 WHERE id=? AND payment_method='gcash'`,
       [gcash_ref, orderId]
     );
 
     if (result.affectedRows === 0)
       return res.status(404).json({ message: "Order not found or not a GCash order" });
 
-    res.json({ message: "GCash reference submitted, waiting staff verification." });
+    res.json({ message: "GCash reference submitted, staff notified for verification." });
   } catch (err) {
     console.error("SUBMIT GCASH REF ERROR:", err);
     res.status(500).json({ message: "Failed to submit GCash reference", error: err.message });
@@ -246,23 +227,28 @@ exports.submitGcashReference = async (req, res) => {
 /** ----------------------
  * VERIFY PAYMENT (STAFF)
  * ---------------------- */
+/** ----------------------
+ * VERIFY PAYMENT (STAFF)
+ * ---------------------- */
 exports.verifyPayment = async (req, res) => {
   const orderId = req.params.id;
   const staffId = req.user?.id || null;
-  const { amount_received = null } = req.body;
 
-  if (!staffId) return res.status(401).json({ message: "Staff must be authenticated to verify payments" });
+  if (!staffId) 
+    return res.status(401).json({ message: "Staff must be authenticated to verify payments" });
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
+    // Lock the order row for update
     const [rows] = await conn.query(`SELECT * FROM orders WHERE id=? FOR UPDATE`, [orderId]);
     if (rows.length === 0) {
       await conn.rollback();
       conn.release();
       return res.status(404).json({ message: "Order not found" });
     }
+
     const order = rows[0];
 
     if (order.payment_status === 'paid') {
@@ -271,31 +257,20 @@ exports.verifyPayment = async (req, res) => {
       return res.status(400).json({ message: "Order payment already verified" });
     }
 
-    // Recalculate subtotal and total
+    // Recalculate totals in case items changed
     const [itemsRows] = await conn.query(`SELECT price, quantity FROM order_items WHERE order_id=?`, [orderId]);
     const recalculatedSubtotal = itemsRows.reduce((sum, i) => sum + i.price * i.quantity, 0);
     const recalculatedTotal = Number((recalculatedSubtotal + Number(order.delivery_fee) + Number(order.tax)).toFixed(2));
 
-    let changeAmount = null;
-    if (amount_received !== null) {
-      changeAmount = Number((Number(amount_received) - recalculatedTotal).toFixed(2));
-    }
-
-    const verifiedAt = now();
+    // Update order with verified payment
     const [updateResult] = await conn.query(
       `UPDATE orders
-       SET payment_status='paid', status='pending', payment_verified_by=?, verified_at=?, 
-           amount_received=?, change_amount=?, subtotal=?, total=?
+       SET payment_status='paid',
+           subtotal=?,
+           total=?,
+           verified_at=NOW()
        WHERE id=?`,
-      [
-        staffId,
-        verifiedAt,
-        amount_received !== null ? Number(amount_received) : order.amount_received,
-        changeAmount,
-        recalculatedSubtotal,
-        recalculatedTotal,
-        orderId
-      ]
+      [recalculatedSubtotal, recalculatedTotal, orderId]
     );
 
     if (updateResult.affectedRows === 0) {
@@ -307,81 +282,26 @@ exports.verifyPayment = async (req, res) => {
     await conn.commit();
     conn.release();
 
-    res.json({ message: "Payment verified, order marked as pending", orderId, payment_status: 'paid', status: 'pending' });
+    res.json({
+      message: "Payment verified",
+      orderId,
+      payment_status: 'paid',
+      status: order.status, // keep the original status
+      verified_at: new Date(),
+      subtotal: recalculatedSubtotal,
+      total: recalculatedTotal
+    });
   } catch (err) {
-    if (conn) { try { await conn.rollback(); } catch (_) {} try { conn.release(); } catch (_) {} }
+    if (conn) { 
+      try { await conn.rollback(); } catch (_) {}
+      try { conn.release(); } catch (_) {}
+    }
     console.error("VERIFY PAYMENT ERROR:", err);
     res.status(500).json({ message: "Failed to verify payment", error: err.message });
   }
 };
 
-/** ----------------------
- * PAY CASH (STAFF)
- * ---------------------- */
-exports.payCash = async (req, res) => {
-  const orderId = req.params.id;
-  const staffId = req.user?.id || null;
-  const { amount_received } = req.body;
 
-  if (!staffId) return res.status(401).json({ message: "Staff must be authenticated" });
-  if (amount_received === undefined) return res.status(400).json({ message: "amount_received is required" });
-
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-
-    const [rows] = await conn.query(`SELECT * FROM orders WHERE id=? FOR UPDATE`, [orderId]);
-    if (rows.length === 0) {
-      await conn.rollback();
-      conn.release();
-      return res.status(404).json({ message: "Order not found" });
-    }
-    const order = rows[0];
-
-    if (!(order.payment_method === 'cash' || order.payment_method === 'cod')) {
-      await conn.rollback();
-      conn.release();
-      return res.status(400).json({ message: "Order payment method is not cash/cod" });
-    }
-
-    // Recalculate subtotal and total
-    const [itemsRows] = await conn.query(`SELECT price, quantity FROM order_items WHERE order_id=?`, [orderId]);
-    const recalculatedSubtotal = itemsRows.reduce((sum, i) => sum + i.price * i.quantity, 0);
-    const recalculatedTotal = Number((recalculatedSubtotal + Number(order.delivery_fee) + Number(order.tax)).toFixed(2));
-
-    const amt = Number(amount_received);
-    if (isNaN(amt) || amt < recalculatedTotal) {
-      await conn.rollback();
-      conn.release();
-      return res.status(400).json({ message: "Insufficient amount_received" });
-    }
-
-    const changeAmount = Number((amt - recalculatedTotal).toFixed(2));
-    const verifiedAt = now();
-
-    const [result] = await conn.query(
-      `UPDATE orders 
-       SET payment_status='paid', status='pending', amount_received=?, change_amount=?, payment_verified_by=?, verified_at=?, subtotal=?, total=? 
-       WHERE id=?`,
-      [amt, changeAmount, staffId, verifiedAt, recalculatedSubtotal, recalculatedTotal, orderId]
-    );
-
-    if (result.affectedRows === 0) {
-      await conn.rollback();
-      conn.release();
-      return res.status(500).json({ message: "Failed to update order" });
-    }
-
-    await conn.commit();
-    conn.release();
-
-    res.json({ message: "Cash payment recorded and order is pending", orderId, change_amount: changeAmount });
-  } catch (err) {
-    if (conn) { try { await conn.rollback(); } catch (_) {} try { conn.release(); } catch (_) {} }
-    console.error("PAY CASH ERROR:", err);
-    res.status(500).json({ message: "Failed to confirm cash payment", error: err.message });
-  }
-};
 
 /** ----------------------
  * UPDATE ORDER STATUS (STAFF)
@@ -389,19 +309,22 @@ exports.payCash = async (req, res) => {
 exports.updateOrderStatus = async (req, res) => {
   const orderId = req.params.id;
   const { status } = req.body;
-  const validStatuses = ['pending','unverified','paid','preparing','ready','delivered','cancelled'];
+  const validStatuses = ['pending','preparing','ready','delivered','paid','unverified','cancelled'];
 
   if (!status || !validStatuses.includes(status)) {
     return res.status(400).json({ message: `Invalid status. Allowed: ${validStatuses.join(', ')}` });
   }
 
   try {
-    const [result] = await pool.query(`UPDATE orders SET status=? WHERE id=?`, [status, orderId]);
+    const [result] = await pool.query(
+      `UPDATE orders SET status=? WHERE id=?`,
+      [status, orderId]
+    );
 
     if (result.affectedRows === 0)
       return res.status(404).json({ message: "Order not found" });
 
-    res.json({ message: `Order status updated to ${status}` });
+    res.json({ message: `Order status updated to ${status}`, orderId });
   } catch (err) {
     console.error("UPDATE ORDER STATUS ERROR:", err);
     res.status(500).json({ message: "Failed to update order status", error: err.message });
@@ -460,5 +383,60 @@ exports.cancelOrder = async (req, res) => {
   } catch (err) {
     console.error("CANCEL ORDER ERROR:", err);
     res.status(500).json({ message: "Failed to cancel order", error: err.message });
+  }
+};
+
+/// controllers/adminController.js (or wherever your controller is)
+exports.getDashboardTotals = async (req, res) => {
+  try {
+    // 1. Today's revenue (only completed/paid/preparing/ready orders)
+    const [revenueResult] = await pool.query(
+      `SELECT IFNULL(SUM(total), 0) AS todayRevenue
+       FROM orders
+       WHERE DATE(created_at) = CURDATE()
+         AND status IN ('paid','preparing','ready','delivered')`
+    );
+
+    // 2. Total orders excluding cancelled
+    const [totalOrdersResult] = await pool.query(
+      `SELECT COUNT(*) AS totalOrders
+       FROM orders
+       WHERE status != 'cancelled'`
+    );
+
+    // 3. Pending orders (status = 'pending' only)
+    const [pendingOrdersResult] = await pool.query(
+      `SELECT COUNT(*) AS pendingOrders
+       FROM orders
+       WHERE status = 'pending'`
+    );
+
+    // 4. Total menu items
+    const [totalMenuItemsResult] = await pool.query(
+      `SELECT COUNT(*) AS totalMenuItems FROM products`
+    );
+
+    // 5. Best selling item (sum quantities of completed/paid/preparing/ready orders)
+    const [bestSellingResult] = await pool.query(
+      `SELECT oi.name, SUM(oi.quantity) AS sold
+       FROM order_items oi
+       JOIN orders o ON oi.order_id = o.id
+       WHERE o.status IN ('paid','preparing','ready','delivered')
+       GROUP BY oi.product_id
+       ORDER BY sold DESC
+       LIMIT 1`
+    );
+
+    // Return the response
+    res.json({
+      todayRevenue: revenueResult[0].todayRevenue,
+      totalOrders: totalOrdersResult[0].totalOrders,
+      pendingOrders: pendingOrdersResult[0].pendingOrders,
+      totalMenuItems: totalMenuItemsResult[0].totalMenuItems,
+      bestSelling: bestSellingResult[0] || null,
+    });
+  } catch (err) {
+    console.error("GET DASHBOARD TOTALS ERROR:", err);
+    res.status(500).json({ message: "Failed to fetch dashboard totals", error: err.message });
   }
 };

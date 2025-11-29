@@ -8,11 +8,10 @@ const {
   getUserOrders,
   getOrders,
   submitGcashReference,
-  payCash,
   verifyPayment,
   updateOrderStatus,
   markOrderNotified,
-  cancelOrder
+  cancelOrder,
 } = require('../controllers/orderController');
 
 /** ----------------------
@@ -38,9 +37,6 @@ router.put('/cancel/:id', authMiddleware, cancelOrder);
 // Fetch all orders (staff/admin)
 router.get('/', authMiddleware, isStaff, getOrders);
 
-// Staff confirms cash payment (walk-in moves to pending)
-router.put('/pay-cash/:id', authMiddleware, isStaff, payCash);
-
 // Staff verifies GCash or COD payment
 router.put('/verify-payment/:id', authMiddleware, isStaff, verifyPayment);
 
@@ -49,5 +45,6 @@ router.put('/:id/status', authMiddleware, isStaff, updateOrderStatus);
 
 // Mark order as notified (after frontend shows toast)
 router.put('/:id/notified', authMiddleware, isStaff, markOrderNotified);
+
 
 module.exports = router;
