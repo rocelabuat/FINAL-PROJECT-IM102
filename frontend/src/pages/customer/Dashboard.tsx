@@ -18,19 +18,11 @@ const CustomerDashboard: React.FC = () => {
 
     fetchAndRefresh(); // initial fetch
 
-    // Polling every 5 seconds
     interval = setInterval(fetchAndRefresh, 5000);
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
-  // Sort orders by created_at descending
-  const sortedOrders = [...(orders ?? [])].sort((a, b) => {
-    const dateA = new Date(a.created_at).getTime();
-    const dateB = new Date(b.created_at).getTime();
-    return dateB - dateA; // newest first
-  });
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return new Date().toLocaleString();
@@ -54,6 +46,22 @@ const CustomerDashboard: React.FC = () => {
     }
   };
 
+  // Sort orders by created_at descending (newest first)
+  const sortedOrders = [...(orders ?? [])].sort((a, b) => {
+    const dateA = new Date(a.created_at).getTime();
+    const dateB = new Date(b.created_at).getTime();
+    return dateB - dateA; // newest first
+  });
+
+  // Map order id to chronological number (1 = first order ever)
+  const chronologicalOrderNumbers: Record<string, number> = {};
+  [...(orders ?? [])]
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    .forEach((order, index) => {
+      const orderId = typeof order.id === "string" ? order.id : String(order.id);
+      chronologicalOrderNumbers[orderId] = index + 1;
+    });
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">My Orders</h1>
@@ -69,11 +77,12 @@ const CustomerDashboard: React.FC = () => {
             const orderId = typeof id === "string" ? id : String(id);
             const orderTotal = Number(total) || 0;
             const orderItems = items ?? [];
+            const orderNumber = chronologicalOrderNumbers[orderId] ?? 0;
 
             return (
               <Card key={orderId}>
                 <CardHeader>
-                  <CardTitle>Order #{orderId.slice(0, 6)}</CardTitle>
+                  <CardTitle>Order #{orderNumber}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <p><strong>Date:</strong> {formatDate(created_at)}</p>
@@ -98,7 +107,6 @@ const CustomerDashboard: React.FC = () => {
 
                   <p className="font-bold text-primary">Total: ₱{orderTotal.toFixed(2)}</p>
 
-                  {/* Cancel button for pending/unverified orders */}
                   {(status === "pending" || status === "unverified") && (
                     <button
                       className="text-red-500 hover:underline mt-2"

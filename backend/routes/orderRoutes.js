@@ -3,6 +3,7 @@ const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const { isStaff, isAdmin } = require('../middleware/roleMiddleware');
 
+
 const {
   createOrder,
   getUserOrders,
@@ -12,6 +13,7 @@ const {
   updateOrderStatus,
   markOrderNotified,
   cancelOrder,
+  assignOrderToStaff,   // ✅ ADD THIS
 } = require('../controllers/orderController');
 
 /** ----------------------
@@ -45,6 +47,10 @@ router.put('/:id/status', authMiddleware, isStaff, updateOrderStatus);
 
 // Mark order as notified (after frontend shows toast)
 router.put('/:id/notified', authMiddleware, isStaff, markOrderNotified);
+
+// Staff claims an order — prevents other staff from handling it
+router.put('/assign/:id', authMiddleware, isStaff, assignOrderToStaff);
+
 
 
 module.exports = router;

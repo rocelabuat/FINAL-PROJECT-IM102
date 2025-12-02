@@ -10,6 +10,20 @@ const isOnlinePaymentMethod = (method) => {
   return method === 'gcash' || method === 'cod';
 };
 
+/**
+ * Helper used when a staff action should auto-assign the order to them.
+ * Uses the provided connection (conn) so it can be used inside transactions.
+ */
+async function assignOrderIfNeeded(conn, orderId, staffId) {
+  if (!staffId) return;
+  await conn.query(
+    `UPDATE orders
+     SET staff_id = ?
+     WHERE id = ? AND (staff_id IS NULL OR staff_id = 0)`,
+    [staffId, orderId]
+  );
+}
+
 /** ----------------------
  * CREATE ORDER
  * Handles both online orders (customers) and walk-in created by staff
@@ -78,9 +92,9 @@ exports.createOrder = async (req, res) => {
     const [orderResult] = await connection.query(
       `INSERT INTO orders
         (user_id, firstName, lastName, phone, address, barangay, city, province, postal,
-         payment_method, gcash_ref, subtotal, delivery_fee, tax, total,
-         order_source, notified, items, status, payment_status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        payment_method, gcash_ref, subtotal, delivery_fee, tax, total,
+        order_source, notified, items, status, payment_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         firstName || null,
@@ -139,17 +153,29 @@ exports.createOrder = async (req, res) => {
  * GET USER ORDERS
  * ---------------------- */
 exports.getUserOrders = async (req, res) => {
-  if (!req.user?.id) return res.status(401).json({ message: "User not authenticated" });
+  if (!req.user?.id)
+    return res.status(401).json({ message: "User not authenticated" });
 
   try {
+    // 1️⃣ Fetch all orders for the user, most recent first
     const [ordersRows] = await pool.query(
       `SELECT * FROM orders WHERE user_id=? ORDER BY created_at DESC`,
       [req.user.id]
     );
 
+    // 2️⃣ Map orders and add per-user order number
+    const ordersWithNumber = ordersRows.map((order, index) => ({
+      ...order,
+      customer_order_number: index + 1 // starts at 1 for this user
+    }));
+
+    // 3️⃣ Fetch items for each order
     const ordersWithItems = await Promise.all(
-      ordersRows.map(async order => {
-        const [items] = await pool.query(`SELECT * FROM order_items WHERE order_id=?`, [order.id]);
+      ordersWithNumber.map(async order => {
+        const [items] = await pool.query(
+          `SELECT * FROM order_items WHERE order_id=?`,
+          [order.id]
+        );
         return {
           ...order,
           items
@@ -166,12 +192,22 @@ exports.getUserOrders = async (req, res) => {
 
 /** ----------------------
  * GET ALL ORDERS (STAFF/ADMIN)
+ * Shows orders that are unassigned OR assigned to the current staff
  * ---------------------- */
 exports.getOrders = async (req, res) => {
+  const staffId = req.user?.id;
+
+  if (!staffId)
+    return res.status(401).json({ message: "Staff not authenticated" });
+
   try {
     const { status, payment_method, payment_status, orderId, onlyNotified } = req.query;
-    let query = `SELECT * FROM orders WHERE 1=1`;
-    const params = [];
+
+    let query = `
+      SELECT * FROM orders
+      WHERE (staff_id IS NULL OR staff_id = ?)
+    `;
+    const params = [staffId];
 
     if (status) { query += " AND status=?"; params.push(status); }
     if (payment_method) { query += " AND payment_method=?"; params.push(payment_method); }
@@ -185,15 +221,17 @@ exports.getOrders = async (req, res) => {
 
     const ordersWithItems = await Promise.all(
       ordersRows.map(async order => {
-        const [items] = await pool.query(`SELECT * FROM order_items WHERE order_id=?`, [order.id]);
-        return {
-          ...order,
-          items
-        };
+        const [items] = await pool.query(
+          `SELECT * FROM order_items WHERE order_id=?`,
+          [order.id]
+        );
+
+        return { ...order, items };
       })
     );
 
     res.json(ordersWithItems);
+
   } catch (err) {
     console.error("GET ORDERS ERROR:", err);
     res.status(500).json({ message: "Failed to fetch orders", error: err.message });
@@ -210,7 +248,9 @@ exports.submitGcashReference = async (req, res) => {
 
   try {
     const [result] = await pool.query(
-      `UPDATE orders SET gcash_ref=?, payment_status='unverified', status='unverified', order_source='online', notified=1 WHERE id=? AND payment_method='gcash'`,
+      `UPDATE orders 
+       SET gcash_ref=?, payment_status='unverified', status='unverified', order_source='online', notified=1 
+       WHERE id=? AND payment_method='gcash'`,
       [gcash_ref, orderId]
     );
 
@@ -227,15 +267,12 @@ exports.submitGcashReference = async (req, res) => {
 /** ----------------------
  * VERIFY PAYMENT (STAFF)
  * ---------------------- */
-/** ----------------------
- * VERIFY PAYMENT (STAFF)
- * ---------------------- */
 exports.verifyPayment = async (req, res) => {
   const orderId = req.params.id;
   const staffId = req.user?.id || null;
 
-  if (!staffId) 
-    return res.status(401).json({ message: "Staff must be authenticated to verify payments" });
+  if (!staffId)
+    return res.status(401).json({ message: "Staff must be authenticated" });
 
   const conn = await pool.getConnection();
   try {
@@ -244,55 +281,63 @@ exports.verifyPayment = async (req, res) => {
     // Lock the order row for update
     const [rows] = await conn.query(`SELECT * FROM orders WHERE id=? FOR UPDATE`, [orderId]);
     if (rows.length === 0) {
-      await conn.rollback();
-      conn.release();
+      await conn.rollback(); conn.release();
       return res.status(404).json({ message: "Order not found" });
     }
 
     const order = rows[0];
 
     if (order.payment_status === 'paid') {
-      await conn.rollback();
-      conn.release();
+      await conn.rollback(); conn.release();
       return res.status(400).json({ message: "Order payment already verified" });
     }
+
+    // Assign staff if not assigned yet
+    await assignOrderIfNeeded(conn, orderId, staffId);
 
     // Recalculate totals in case items changed
     const [itemsRows] = await conn.query(`SELECT price, quantity FROM order_items WHERE order_id=?`, [orderId]);
     const recalculatedSubtotal = itemsRows.reduce((sum, i) => sum + i.price * i.quantity, 0);
     const recalculatedTotal = Number((recalculatedSubtotal + Number(order.delivery_fee) + Number(order.tax)).toFixed(2));
 
-    // Update order with verified payment
+    // Update order: payment verified, update status if unverified
     const [updateResult] = await conn.query(
       `UPDATE orders
-       SET payment_status='paid',
-           subtotal=?,
-           total=?,
-           verified_at=NOW()
+       SET 
+         payment_status='paid',
+         status = CASE 
+                    WHEN status='unverified' THEN 'pending' 
+                    ELSE status 
+                  END,
+         subtotal=?,
+         total=?,
+         verified_at=NOW()
        WHERE id=?`,
       [recalculatedSubtotal, recalculatedTotal, orderId]
     );
 
     if (updateResult.affectedRows === 0) {
-      await conn.rollback();
-      conn.release();
+      await conn.rollback(); conn.release();
       return res.status(500).json({ message: "Failed to update order during verification" });
     }
 
     await conn.commit();
     conn.release();
 
+    const updatedStatus = (order.status === 'unverified') ? 'pending' : order.status;
+
     res.json({
-      message: "Payment verified",
+      message: "Payment verified successfully",
       orderId,
       payment_status: 'paid',
-      status: order.status, // keep the original status
+      status: updatedStatus,
       verified_at: new Date(),
       subtotal: recalculatedSubtotal,
       total: recalculatedTotal
     });
+
   } catch (err) {
-    if (conn) { 
+    if (conn) {
       try { await conn.rollback(); } catch (_) {}
       try { conn.release(); } catch (_) {}
     }
@@ -301,21 +346,28 @@ exports.verifyPayment = async (req, res) => {
   }
 };
 
-
-
 /** ----------------------
  * UPDATE ORDER STATUS (STAFF)
  * ---------------------- */
 exports.updateOrderStatus = async (req, res) => {
   const orderId = req.params.id;
-  const { status } = req.body;
-  const validStatuses = ['pending','preparing','ready','delivered','paid','unverified','cancelled'];
+  const staffId = req.user?.id;
 
-  if (!status || !validStatuses.includes(status)) {
+  const { status } = req.body;
+  const validStatuses = [
+    'pending','preparing','ready','delivered','paid','unverified','cancelled'
+  ];
+
+  if (!status || !validStatuses.includes(status))
     return res.status(400).json({ message: `Invalid status. Allowed: ${validStatuses.join(', ')}` });
-  }
 
   try {
+    // Assign staff first (only if not yet assigned)
+    await pool.query(
+      `UPDATE orders SET staff_id=? WHERE id=? AND (staff_id IS NULL OR staff_id = 0)`,
+      [staffId, orderId]
+    );
+
     const [result] = await pool.query(
       `UPDATE orders SET status=? WHERE id=?`,
       [status, orderId]
@@ -325,6 +377,7 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
 
     res.json({ message: `Order status updated to ${status}`, orderId });
+
   } catch (err) {
     console.error("UPDATE ORDER STATUS ERROR:", err);
     res.status(500).json({ message: "Failed to update order status", error: err.message });
@@ -336,10 +389,24 @@ exports.updateOrderStatus = async (req, res) => {
  * ---------------------- */
 exports.markOrderNotified = async (req, res) => {
   const orderId = req.params.id;
+  const staffId = req.user?.id;
+
   try {
-    const [result] = await pool.query(`UPDATE orders SET notified=1 WHERE id=?`, [orderId]);
-    if (result.affectedRows === 0) return res.status(404).json({ message: "Order not found" });
+    await pool.query(
+      `UPDATE orders SET staff_id=? WHERE id=? AND (staff_id IS NULL OR staff_id = 0)`,
+      [staffId, orderId]
+    );
+
+    const [result] = await pool.query(
+      `UPDATE orders SET notified=1 WHERE id=?`,
+      [orderId]
+    );
+
+    if (result.affectedRows === 0)
+      return res.status(404).json({ message: "Order not found" });
+
     res.json({ message: "Order marked as notified" });
+
   } catch (err) {
     console.error("MARK NOTIFIED ERROR:", err);
     res.status(500).json({ message: "Failed to mark notified", error: err.message });
@@ -386,25 +453,27 @@ exports.cancelOrder = async (req, res) => {
   }
 };
 
-/// controllers/adminController.js (or wherever your controller is)
+/** ----------------------
+ * DASHBOARD TOTALS (ADMIN)
+ * ---------------------- */
 exports.getDashboardTotals = async (req, res) => {
   try {
-    // 1. Today's revenue (only completed/paid/preparing/ready orders)
+    // 1. Today's revenue (include verified GCash orders: 'pending' + completed statuses)
     const [revenueResult] = await pool.query(
       `SELECT IFNULL(SUM(total), 0) AS todayRevenue
        FROM orders
        WHERE DATE(created_at) = CURDATE()
-         AND status IN ('paid','preparing','ready','delivered')`
+         AND status IN ('pending','paid','preparing','ready','delivered')`
     );
 
-    // 2. Total orders excluding cancelled
+    // 2. Total orders (exclude cancelled)
     const [totalOrdersResult] = await pool.query(
       `SELECT COUNT(*) AS totalOrders
        FROM orders
        WHERE status != 'cancelled'`
     );
 
-    // 3. Pending orders (status = 'pending' only)
+    // 3. Pending orders (include verified GCash orders still pending)
     const [pendingOrdersResult] = await pool.query(
       `SELECT COUNT(*) AS pendingOrders
        FROM orders
@@ -416,18 +485,17 @@ exports.getDashboardTotals = async (req, res) => {
       `SELECT COUNT(*) AS totalMenuItems FROM products`
     );
 
-    // 5. Best selling item (sum quantities of completed/paid/preparing/ready orders)
+    // 5. Best-selling item (include verified GCash orders: pending + completed statuses)
     const [bestSellingResult] = await pool.query(
       `SELECT oi.name, SUM(oi.quantity) AS sold
        FROM order_items oi
        JOIN orders o ON oi.order_id = o.id
-       WHERE o.status IN ('paid','preparing','ready','delivered')
+       WHERE o.status IN ('pending','paid','preparing','ready','delivered')
        GROUP BY oi.product_id
        ORDER BY sold DESC
        LIMIT 1`
     );
 
-    // Return the response
     res.json({
       todayRevenue: revenueResult[0].todayRevenue,
       totalOrders: totalOrdersResult[0].totalOrders,
@@ -438,5 +506,40 @@ exports.getDashboardTotals = async (req, res) => {
   } catch (err) {
     console.error("GET DASHBOARD TOTALS ERROR:", err);
     res.status(500).json({ message: "Failed to fetch dashboard totals", error: err.message });
+  }
+};
+
+// Staff claims an order (assign handled_by)
+exports.assignOrderToStaff = async (req, res) => {
+  const orderId = req.params.id;
+  const staffId = req.user?.id;
+
+  if (!staffId) {
+    return res.status(401).json({ message: "Staff must be logged in" });
+  }
+
+  try {
+    // Only assign if no staff has taken this order yet
+    const [result] = await pool.query(
+      `UPDATE orders
+       SET staff_id=?
+       WHERE id=? AND (staff_id IS NULL OR staff_id = 0)`,
+      [staffId, orderId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(400).json({
+        message: "Order is already handled by another staff",
+      });
+    }
+
+    res.json({
+      message: "Order assigned successfully",
+      orderId,
+      staff_id: staffId,
+    });
+  } catch (err) {
+    console.error("ASSIGN ORDER ERROR:", err);
+    res.status(500).json({ message: "Failed to assign order", error: err.message });
   }
 };
