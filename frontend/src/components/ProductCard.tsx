@@ -13,18 +13,26 @@ interface ProductCardProps {
   price: number;
   image: string;
   category: string;
+  stock: number;
+  isLowStock: boolean;
 }
 
-export const ProductCard = ({ id, name, description, price, image, category }: ProductCardProps) => {
+export const ProductCard = ({
+  id, name, description, price, image, category, stock, isLowStock
+}: ProductCardProps) => {
   const { addToCart } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
 
   const handleAddToCart = () => {
     if (!user || user.role !== "customer") {
-      // User is not logged in as customer
       toast.error("Please log in as a customer to add items to cart!");
       navigate("/login?type=customer");
+      return;
+    }
+
+    if (stock <= 0) {
+      toast.error("This item is out of stock!");
       return;
     }
 
@@ -45,16 +53,32 @@ export const ProductCard = ({ id, name, description, price, image, category }: P
             {category}
           </span>
         </div>
+
+        <div className="absolute bottom-2 left-2">
+          {stock <= 0 ? (
+            <span className="bg-red-600 text-white text-xs px-2 py-1 rounded">OUT OF STOCK</span>
+          ) : isLowStock ? (
+            <span className="bg-yellow-500 text-black text-xs px-2 py-1 rounded">LOW STOCK</span>
+          ) : (
+            <span className="bg-green-600 text-white text-xs px-2 py-1 rounded">In Stock</span>
+          )}
+        </div>
       </div>
+
       <CardContent className="p-4">
         <h3 className="font-semibold text-lg mb-1">{name}</h3>
         <p className="text-sm text-muted-foreground mb-2">{description}</p>
         <p className="text-2xl font-bold text-primary">₱{price.toFixed(2)}</p>
       </CardContent>
+
       <CardFooter className="p-4 pt-0">
-        <Button onClick={handleAddToCart} className="w-full gap-2">
+        <Button 
+          onClick={handleAddToCart} 
+          className="w-full gap-2"
+          disabled={stock <= 0}  // Disable if out of stock
+        >
           <Plus className="h-4 w-4" />
-          Add to Cart
+          {stock <= 0 ? "Out of Stock" : "Add to Cart"}
         </Button>
       </CardFooter>
     </Card>

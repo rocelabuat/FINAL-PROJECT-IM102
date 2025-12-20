@@ -11,7 +11,7 @@ import { OrderProvider } from "@/contexts/OrderContext";
 import { CartProvider } from "@/contexts/CartContext";
 import { StaffOrderProvider } from "@/contexts/StaffOrderContext";
 import { MenuProvider } from "@/contexts/MenuContext";
-import { AdminProvider } from "@/contexts/AdminContext"; // <-- Import AdminProvider
+import { AdminProvider } from "@/contexts/AdminContext";
 
 import { Navbar } from "@/components/Navbar";
 
@@ -27,6 +27,8 @@ import About from "./pages/About";
 import Contacts from "./pages/Contacts";
 import LoginCustomerPrompt from "./pages/LoginCostumerPrompt";
 import OrderSuccess from "./pages/OrderSuccess";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 // Staff Routes
 import StaffRoutes from "@/routes/StaffRoutes";
@@ -141,6 +143,7 @@ const App = () => (
                     }
                   />
 
+                  {/* Public Pages */}
                   <Route path="/about" element={<About />} />
                   <Route path="/contacts" element={<Contacts />} />
 
@@ -148,6 +151,10 @@ const App = () => (
                   <Route path="/login" element={<Login />} />
                   <Route path="/register" element={<Register />} />
                   <Route path="/login-customer" element={<LoginCustomerPrompt />} />
+
+                  {/* Forgot / Reset Password */}
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
 
                   {/* Staff Routes */}
                   <Route

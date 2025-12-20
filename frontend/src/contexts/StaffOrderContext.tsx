@@ -2,27 +2,13 @@ import { createContext, useContext, useState, useEffect, useCallback, ReactNode 
 import { useAuth } from "./AuthContext";
 import { toast } from "sonner";
 
-export type OrderStatus =
-  | "pending"
-  | "preparing"
-  | "ready"
-  | "delivered"
-  | "paid"
-  | "cancelled"
-  | "unverified";
-
-export interface CartItem {
-  product_id: number | string;
-  name: string;
-  price: number;
-  quantity: number;
-}
-
+// Type Definitions (with optional orderDate)
+export type OrderStatus = "pending" | "preparing" | "ready" | "delivered" | "paid" | "cancelled" | "unverified";
+export interface CartItem { product_id: number | string; name: string; price: number; quantity: number; }
 export interface OrderItem extends CartItem {}
-
-export interface Order {
+export interface Order { 
   id: number | string;
-  orderDate?: string | null;
+  orderDate?: string | null; // Optional property
   firstName: string;
   lastName: string;
   phone: string;
@@ -43,15 +29,17 @@ export interface Order {
   amount_received?: number;
   change_amount?: number;
   notified?: boolean;
-  staff_id?: number | null; // ✅ added
+  staff_id?: number | null;
 }
-
+interface InventoryItem { id: number; name: string; stock: number; threshold: number; low_stock: boolean; }
+interface BackendResponse { inventory?: InventoryItem[]; [key: string]: any; }
 interface StaffOrderContextType {
   orders: Order[];
+  inventory: InventoryItem[];
   newOrderCount: number;
   fetchOrders: () => Promise<void>;
-  updateOrderStatus: (orderId: string | number, status: OrderStatus) => Promise<void>;
-  verifyPayment: (orderId: string | number, amount_received?: number) => Promise<void>;
+  updateOrderStatus: (orderId: string | number, status: OrderStatus) => Promise<BackendResponse>;
+  verifyPayment: (orderId: string | number, amount_received?: number) => Promise<BackendResponse>;
   markOrderNotified: (orderId: string | number) => Promise<void>;
   resetNewOrderCount: () => void;
   loading: boolean;
@@ -59,23 +47,28 @@ interface StaffOrderContextType {
 
 const StaffOrderContext = createContext<StaffOrderContextType | undefined>(undefined);
 
+// Hook to use StaffOrderContext
 export const useStaffOrder = (): StaffOrderContextType => {
   const context = useContext(StaffOrderContext);
   if (!context) throw new Error("useStaffOrder must be used within StaffOrderProvider");
   return context;
 };
 
+// StaffOrderProvider Component
 export const StaffOrderProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [newOrderCount, setNewOrderCount] = useState(0);
 
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+  // Normalize orders fetched from the backend
   const normalizeOrder = (o: any): Order => ({
     id: o.id,
-    orderDate: o.created_at || o.order_date || o.timestamp || null,
+    // Handle missing or undefined `created_at` and `order_date`
+    orderDate: o.created_at || o.order_date || null,  // fallback to null if both are missing
     firstName: o.firstName || "",
     lastName: o.lastName || "",
     phone: o.phone || "",
@@ -96,11 +89,12 @@ export const StaffOrderProvider = ({ children }: { children: ReactNode }) => {
     amount_received: o.amount_received ? Number(o.amount_received) : undefined,
     change_amount: o.change_amount ? Number(o.change_amount) : undefined,
     notified: !!o.notified,
-    staff_id: o.staff_id ? Number(o.staff_id) : null, // ✅ map staff
+    staff_id: o.staff_id ? Number(o.staff_id) : null,
   });
 
+  // Memoized fetchOrders function using useCallback to prevent infinite re-renders
   const fetchOrders = useCallback(async () => {
-    if (!user) return;
+    if (!user) return; // Do nothing if no user is available
     setLoading(true);
 
     try {
@@ -111,176 +105,180 @@ export const StaffOrderProvider = ({ children }: { children: ReactNode }) => {
         },
       });
 
-      if (!res.ok) throw new Error(`Failed to fetch orders: ${res.status}`);
+      if (!res.ok) {
+        throw new Error('Failed to fetch orders');
+      }
 
       const data = await res.json();
-      if (!Array.isArray(data)) throw new Error("Invalid orders data from API");
-
       const normalized = data.map(normalizeOrder);
       setOrders(normalized);
 
-      const count = normalized.filter(o => !o.notified && o.status !== "cancelled").length;
+      const count = normalized.filter(
+        (o) => !o.notified && o.status !== "cancelled"
+      ).length;
       setNewOrderCount(count);
 
-    } catch (err: any) {
-      console.error("FETCH ORDERS ERROR:", err);
+      // Fetch inventory after fetching orders
+      await updateInventoryFromBackend();
+    } catch (err) {
+      console.error('Error fetching orders:', err);
       toast.error("Failed to load orders");
-      setOrders([]);
-
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, API_URL]); // `user` dependency ensures it only runs when user changes
 
+  // Fetch orders when user is available (only runs when `user` changes)
   useEffect(() => {
-    if (user) fetchOrders();
-  }, [user, fetchOrders]);
+    if (user) {
+      fetchOrders(); // Only fetch once when user is authenticated
+    }
+  }, [user, fetchOrders]); // Only triggers when `user` changes
 
-  const claimOrderIfNeeded = async (orderId: string | number) => {
-    const order = orders.find(o => o.id === orderId);
-    if (!order) throw new Error("Order not found");
-
-    if (!order.staff_id || order.staff_id === 0) {
-      const res = await fetch(`${API_URL}/api/orders/assign/${orderId}`, {
-        method: "PUT",
+  // Fetch inventory from backend
+  const updateInventoryFromBackend = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/inventory`, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${user?.token}`
-        }
+          Authorization: `Bearer ${user?.token}`,
+        },
       });
 
-      if (!res.ok) throw new Error("Failed to claim order");
-      // ✅ update state locally
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, staff_id: user?.id } : o));
+      const data = await res.json();
+      setInventory(data);
+      // Display warning for low stock
+      data.forEach(i => {
+        if (i.low_stock) {
+          toast.warning(`⚠ LOW STOCK: ${i.name} (Remaining: ${i.stock})`);
+        }
+      });
+    } catch (err) {
+      console.error("Failed to fetch inventory", err);
     }
   };
 
+  // Deduct stock from inventory after order is placed
+  const deductInventoryStock = async (items: OrderItem[]) => {
+    const itemPromises = items.map(async (item) => {
+      await fetch(`${API_URL}/api/inventory/deduct`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${user?.token}`,
+        },
+        body: JSON.stringify({ product_id: item.product_id, quantity: item.quantity }),
+      });
+    });
+    await Promise.all(itemPromises);
+  };
+
+  // Handle order creation, deduct inventory, and update order status
+  const createOrder = async (order: Order) => {
+    try {
+      const res = await fetch(`${API_URL}/api/orders`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${user?.token}`,
+        },
+        body: JSON.stringify(order),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        await deductInventoryStock(order.items);  // Deduct stock after order is placed
+        fetchOrders();  // Re-fetch orders to update state
+      } else {
+        toast.error("Failed to create order");
+      }
+    } catch (err) {
+      console.error("Error creating order", err);
+    }
+  };
+
+  // Update order status
   const updateOrderStatus = async (orderId: string | number, status: OrderStatus) => {
     try {
-      await claimOrderIfNeeded(orderId); // ✅ auto-claim
-
       const res = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${user?.token}`
+          Authorization: `Bearer ${user?.token}`,
         },
         body: JSON.stringify({ status }),
       });
 
-      if (!res.ok) throw new Error(`Failed to update status: ${res.status}`);
+      if (!res.ok) throw new Error("Failed to update order status");
 
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status, staff_id: user?.id } : o));
-      toast.success(`Order marked as ${status}`);
-
-    } catch (err: any) {
+      const data: BackendResponse = await res.json();
+      setOrders(prev =>
+        prev.map(o => (o.id === orderId ? { ...o, status, staff_id: user?.id } : o))
+      );
+      return data;
+    } catch (err) {
       console.error("UPDATE STATUS ERROR:", err);
-      toast.error(err.message || "Failed to update order status");
+      throw err;
     }
   };
 
+  // Verify payment and update order status
   const verifyPayment = async (orderId: string | number, amount_received?: number) => {
     try {
-      const order = orders.find(o => o.id === orderId);
-      if (!order) throw new Error("Order not found");
-      if (order.status === "cancelled") throw new Error("Cannot verify payment. Order cancelled.");
-
-      await claimOrderIfNeeded(orderId); // ✅ auto-claim first
-
-      const payload = { amount_received };
-
       const res = await fetch(`${API_URL}/api/orders/verify-payment/${orderId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${user?.token}`
+          Authorization: `Bearer ${user?.token}`,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ amount_received }),
       });
 
-      if (!res.ok) throw new Error(`Failed to verify payment: ${res.status}`);
+      if (!res.ok) throw new Error("Failed to verify payment");
 
-      setOrders(prev =>
-        prev.map(o => {
-          if (o.id !== orderId) return o;
-          return {
-            ...o,
-            paymentStatus: "paid",
-            status: o.payment_method === "cod" ? "delivered" : "pending",
-            amount_received,
-            change_amount: amount_received !== undefined ? amount_received - o.total : o.change_amount,
-            staff_id: user?.id
-          };
-        })
-      );
-
-      toast.success("Payment verified successfully");
-
-    } catch (err: any) {
+      const data: BackendResponse = await res.json();
+      setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, paymentStatus: "paid" } : o)));
+      return data;
+    } catch (err) {
       console.error("VERIFY PAYMENT ERROR:", err);
-      toast.error(err.message || "Failed to verify payment");
+      throw err;
     }
   };
 
+  // Mark order as notified
   const markOrderNotified = async (orderId: string | number) => {
     try {
-      await claimOrderIfNeeded(orderId); // ✅ auto-claim as well
-
       const res = await fetch(`${API_URL}/api/orders/${orderId}/notified`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${user?.token}`
+          Authorization: `Bearer ${user?.token}`,
         },
       });
 
-      if (!res.ok) throw new Error(`Failed to mark notified: ${res.status}`);
-
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, notified: true, staff_id: user?.id } : o));
+      if (!res.ok) throw new Error("Failed to mark notified");
+      setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, notified: true } : o)));
       setNewOrderCount(prev => Math.max(prev - 1, 0));
-
       toast.success("Order marked as notified");
-
     } catch (err: any) {
-      console.error("MARK NOTIFIED ERROR:", err);
-      toast.error(err.message || "Failed to mark order as notified");
+      toast.error(err.message);
     }
   };
 
   const resetNewOrderCount = () => setNewOrderCount(0);
 
-  // ⏰ Midnight reset
-  useEffect(() => {
-    const msUntilMidnight = () => {
-      const now = new Date();
-      const mid = new Date();
-      mid.setHours(24, 0, 0, 0);
-      return mid.getTime() - now.getTime();
-    };
-
-    const scheduleReset = () => {
-      const timeout = setTimeout(() => {
-        resetNewOrderCount();
-        fetchOrders();
-        scheduleReset();
-      }, msUntilMidnight());
-      return () => clearTimeout(timeout);
-    };
-
-    return scheduleReset();
-  }, [fetchOrders]);
-
   return (
     <StaffOrderContext.Provider
       value={{
         orders,
+        inventory,
         newOrderCount,
         fetchOrders,
         updateOrderStatus,
         verifyPayment,
         markOrderNotified,
         resetNewOrderCount,
-        loading
+        loading,
       }}
     >
       {children}

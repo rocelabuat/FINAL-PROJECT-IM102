@@ -7,6 +7,14 @@ const Menu = () => {
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const [selectedCategory, setSelectedCategory] = useState('All');
 
+  // Function to check if stock is low
+  const getStockAndLowStock = (productId: string) => {
+    // Dummy logic for stock: you can replace this with real logic
+    const stock = 10; // Hardcoded stock value, replace with your logic
+    const isLowStock = stock <= 5;
+    return { stock, isLowStock };
+  };
+
   const filteredProducts = selectedCategory === 'All'
     ? products
     : products.filter(p => p.category === selectedCategory);
@@ -24,7 +32,6 @@ const Menu = () => {
 
         {/* Tabs */}
         <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="mb-8">
-          {/* Change grid-cols-4 → grid-cols-5 to fit Drinks tab */}
           <TabsList className="grid w-full max-w-md mx-auto grid-cols-5 gap-2">
             {categories.map(category => (
               <TabsTrigger key={category} value={category}>
@@ -36,9 +43,19 @@ const Menu = () => {
 
         {/* Products Grid */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredProducts.map(product => (
-            <ProductCard key={product.id} {...product} />
-          ))}
+          {filteredProducts.map(product => {
+            // Get stock and low stock info dynamically
+            const { stock, isLowStock } = getStockAndLowStock(product.id);
+
+            return (
+              <ProductCard
+                key={product.id}
+                {...product}
+                stock={stock}
+                isLowStock={isLowStock}
+              />
+            );
+          })}
         </div>
       </div>
     </div>

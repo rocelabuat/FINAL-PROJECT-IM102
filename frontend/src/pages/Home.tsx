@@ -21,9 +21,11 @@ import { ProductCard } from "@/components/ProductCard";
 import { products } from "@/data/products";
 import React from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext"; // Assume you have ThemeContext
 
 const Home: React.FC = () => {
   const { user, logout } = useAuth();
+  const { theme } = useTheme(); // "light" or "dark"
   const navigate = useNavigate();
   const featuredProducts = products.slice(0, 4);
 
@@ -40,25 +42,39 @@ const Home: React.FC = () => {
     else navigate("/login?type=customer");
   };
 
+  const textColor = theme === "dark" ? "text-foreground" : "text-black";
+  const mutedTextColor =
+    theme === "dark" ? "text-muted-foreground" : "text-gray-700";
+
   return (
-    <div className="min-h-screen">
+    <div className={`min-h-screen ${theme === "light" ? "bg-white" : ""}`}>
       {/* Hero Section */}
       <section className="relative h-[600px] flex items-center">
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: `url(${heroImage})` }}
         >
-          <div className="absolute inset-0 bg-gradient-to-r from-background/95 via-background/80 to-background/60" />
+          {/* Gradient overlay adjusts based on theme */}
+          <div
+            className={`absolute inset-0 ${
+              theme === "dark"
+                ? "bg-gradient-to-r from-background/95 via-background/80 to-background/60"
+                : "bg-gradient-to-r from-white/60 via-white/40 to-white/20"
+            }`}
+          />
         </div>
 
         <div className="container mx-auto px-4 relative z-10">
           <div className="max-w-2xl">
-            <h1 className="text-5xl md:text-6xl font-bold mb-4 text-foreground">
-              Crispy. Juicy. <span className="text-primary">Perfectly Fried!</span>
+            <h1
+              className={`text-5xl md:text-6xl font-bold mb-4 ${textColor}`}
+            >
+              Crispy. Juicy.{" "}
+              <span className="text-primary">Perfectly Fried!</span>
             </h1>
-            <p className="text-xl text-muted-foreground mb-8">
-              Experience the ultimate fried chicken — crispy on the outside, juicy
-              on the inside, seasoned to perfection.
+            <p className={`text-xl mb-8 ${mutedTextColor}`}>
+              Experience the ultimate fried chicken — crispy on the outside,
+              juicy on the inside, seasoned to perfection.
             </p>
             <div className="flex flex-wrap gap-4">
               <Button size="lg" className="gap-2" onClick={handleOrderNow}>
@@ -82,7 +98,11 @@ const Home: React.FC = () => {
       </section>
 
       {/* Features Section */}
-      <section className="py-16 bg-muted/30">
+      <section
+        className={`py-16 ${
+          theme === "dark" ? "bg-muted/30" : "bg-gray-100/40"
+        }`}
+      >
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-8">
             <div className="text-center">
@@ -90,7 +110,7 @@ const Home: React.FC = () => {
                 <Clock className="h-8 w-8" />
               </div>
               <h3 className="text-xl font-semibold mb-2">Fast Service</h3>
-              <p className="text-muted-foreground">
+              <p className={mutedTextColor}>
                 Quick preparation and delivery, hot and fresh every time.
               </p>
             </div>
@@ -100,7 +120,7 @@ const Home: React.FC = () => {
                 <Truck className="h-8 w-8" />
               </div>
               <h3 className="text-xl font-semibold mb-2">Home Delivery</h3>
-              <p className="text-muted-foreground">
+              <p className={mutedTextColor}>
                 Order online and get it delivered right to your doorstep.
               </p>
             </div>
@@ -110,7 +130,7 @@ const Home: React.FC = () => {
                 <Star className="h-8 w-8" />
               </div>
               <h3 className="text-xl font-semibold mb-2">Quality Guaranteed</h3>
-              <p className="text-muted-foreground">
+              <p className={mutedTextColor}>
                 Premium ingredients and time-tested recipes for the best taste.
               </p>
             </div>
@@ -123,7 +143,7 @@ const Home: React.FC = () => {
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">Featured Menu</h2>
-            <p className="text-muted-foreground text-lg">
+            <p className={mutedTextColor + " text-lg"}>
               Our most popular items — loved by everyone!
             </p>
           </div>
@@ -151,10 +171,20 @@ const Home: React.FC = () => {
       </section>
 
       {/* Access Portal Section */}
-      <section className="py-24 bg-gradient-to-b from-muted/30 to-background border-t border-border">
+      <section
+        className={`py-24 border-t border-border ${
+          theme === "dark"
+            ? "bg-gradient-to-b from-muted/30 to-background"
+            : "bg-gradient-to-b from-gray-100/40 to-white"
+        }`}
+      >
         <div className="container mx-auto px-4 text-center">
-          <h3 className="text-4xl font-bold mb-4 text-foreground">Access Portal</h3>
-          <p className="text-muted-foreground text-lg mb-16">Select your role to continue</p>
+          <h3 className={`text-4xl font-bold mb-4 ${textColor}`}>
+            Access Portal
+          </h3>
+          <p className={`${mutedTextColor} text-lg mb-16`}>
+            Select your role to continue
+          </p>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-10 max-w-6xl mx-auto">
             {/* Customer Card */}
@@ -163,10 +193,10 @@ const Home: React.FC = () => {
                 <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
                   <ShoppingBag className="h-7 w-7 text-primary" />
                 </div>
-                <CardTitle className="text-xl font-semibold text-foreground mb-2">
+                <CardTitle className={textColor + " text-xl font-semibold mb-2"}>
                   Customer
                 </CardTitle>
-                <CardDescription className="text-muted-foreground text-base">
+                <CardDescription className={mutedTextColor + " text-base"}>
                   Browse menu, place orders, and track deliveries
                 </CardDescription>
               </CardHeader>
@@ -181,7 +211,10 @@ const Home: React.FC = () => {
                   </Button>
                 ) : (
                   <Link to="/login?type=customer">
-                    <Button className="w-full font-medium shadow-sm hover:shadow-md" variant="default">
+                    <Button
+                      className="w-full font-medium shadow-sm hover:shadow-md"
+                      variant="default"
+                    >
                       Customer Login
                     </Button>
                   </Link>
@@ -195,16 +228,19 @@ const Home: React.FC = () => {
                 <div className="w-14 h-14 rounded-full bg-secondary/15 flex items-center justify-center mb-4 group-hover:bg-secondary/25 transition-colors">
                   <UserCircle className="h-7 w-7 text-secondary-foreground" />
                 </div>
-                <CardTitle className="text-xl font-semibold text-foreground mb-2">
+                <CardTitle className={textColor + " text-xl font-semibold mb-2"}>
                   Staff
                 </CardTitle>
-                <CardDescription className="text-muted-foreground text-base">
-                  Manage orders, process payments, and update inventory
+                <CardDescription className={mutedTextColor + " text-base"}>
+                  Manage orders, process payments, and track payments
                 </CardDescription>
               </CardHeader>
               <CardContent className="mt-4">
                 <Link to="/login?type=staff">
-                  <Button className="w-full font-medium shadow-sm hover:shadow-md" variant="secondary">
+                  <Button
+                    className="w-full font-medium shadow-sm hover:shadow-md"
+                    variant="secondary"
+                  >
                     Staff Login
                   </Button>
                 </Link>
@@ -217,11 +253,11 @@ const Home: React.FC = () => {
                 <div className="w-14 h-14 rounded-full bg-accent/10 flex items-center justify-center mb-4 group-hover:bg-accent/20 transition-colors">
                   <ShieldCheck className="h-7 w-7 text-accent" />
                 </div>
-                <CardTitle className="text-xl font-semibold text-foreground mb-2">
+                <CardTitle className={textColor + " text-xl font-semibold mb-2"}>
                   Admin
                 </CardTitle>
-                <CardDescription className="text-muted-foreground text-base">
-                  Access reports, analytics, and staff management
+                <CardDescription className={mutedTextColor + " text-base"}>
+                  Access reports, analytics, and manage inventory
                 </CardDescription>
               </CardHeader>
               <CardContent className="mt-4">

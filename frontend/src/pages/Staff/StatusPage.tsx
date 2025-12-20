@@ -1,10 +1,12 @@
 // src/pages/Staff/StatusPage.tsx
+
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useStaffOrder, OrderStatus, Order } from "@/contexts/StaffOrderContext";
 import { toast } from "sonner";
 import { useState } from "react";
+import { useStaffOrder } from "@/contexts/StaffOrderContext";
+import type { Order, OrderStatus } from "@/contexts/StaffOrderContext";
 
 export default function StatusPage() {
   const { orders, updateOrderStatus, verifyPayment } = useStaffOrder();
@@ -32,15 +34,48 @@ export default function StatusPage() {
     setUpdatingIds(prev => new Set(prev).add(order.id));
 
     try {
-      // Force payment verification if GCash and unpaid
+      /* ----------------------------------------------
+         AUTO-VERIFY PAYMENT FOR GCASH USERS
+      ---------------------------------------------- */
       if (order.payment_method === "gcash" && order.paymentStatus !== "paid") {
-        await verifyPayment(order.id);
-        toast.success(`Payment verified for order #${String(order.id).slice(0,6)}`);
+        const paymentResult = await verifyPayment(order.id);
+
+        toast.success(
+          `Payment verified for order #${String(order.id).slice(0, 6)}`
+        );
+
+        // If verify-payment returned inventory warnings
+        if (Array.isArray(paymentResult?.inventory)) {
+          paymentResult.inventory.forEach((item: any) => {
+            if (item.low_stock) {
+              toast.warning(
+                `⚠ LOW STOCK: ${item.name} (Remaining: ${item.stock})`
+              );
+            }
+          });
+        }
       }
 
-      if (newStatus) {
-        await updateOrderStatus(order.id, newStatus);
-        toast.success(`Order #${String(order.id).slice(0,6)} marked as ${newStatus}`);
+      /* ----------------------------------------------
+         UPDATE STATUS
+      ---------------------------------------------- */
+      const response = await updateOrderStatus(order.id, newStatus);
+
+      toast.success(
+        `Order #${String(order.id).slice(0, 6)} marked as ${newStatus}`
+      );
+
+      /* ----------------------------------------------
+         SHOW LOW STOCK WARNING IF DELIVERED
+      ---------------------------------------------- */
+      if (newStatus === "delivered" && Array.isArray(response?.inventory)) {
+        response.inventory.forEach((item: any) => {
+          if (item.low_stock) {
+            toast.warning(
+              `⚠ LOW STOCK: ${item.name} (Remaining: ${item.stock})`
+            );
+          }
+        });
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to update order status");
@@ -62,9 +97,13 @@ export default function StatusPage() {
           <Card key={status}>
             <CardHeader>
               <CardTitle className="flex justify-between capitalize">
-                {status} <Badge className={statusColors[status]}>{statusOrders.length}</Badge>
+                {status}
+                <Badge className={statusColors[status]}>
+                  {statusOrders.length}
+                </Badge>
               </CardTitle>
             </CardHeader>
+
             <CardContent className="space-y-2">
               {statusOrders.length === 0 ? (
                 <p className="text-center text-sm">No orders</p>
@@ -74,18 +113,18 @@ export default function StatusPage() {
                     <p className="font-semibold">#{String(order.id).slice(0, 6)}</p>
                     <p>{order.firstName} {order.lastName}</p>
                     <p>₱{order.total.toFixed(2)}</p>
+
                     <p className="text-xs text-muted-foreground">
                       Payment: {order.payment_method.toUpperCase()} ({order.paymentStatus})
                     </p>
 
-                    {/* Display ordered items */}
-                    {order.items && order.items.length > 0 && (
+                    {order.items?.length > 0 && (
                       <div className="text-sm mt-1">
                         <p className="font-semibold">Ordered Items:</p>
                         <ul className="list-disc list-inside">
                           {order.items.map((item, idx) => (
                             <li key={idx}>
-                              {item.name} x{item.quantity || 1}
+                              {item.name} ×{item.quantity || 1}
                             </li>
                           ))}
                         </ul>
@@ -95,11 +134,15 @@ export default function StatusPage() {
                     {statusFlow[status as OrderStatus] && (
                       <Button
                         size="sm"
-                        onClick={() => handleUpdateStatus(order, statusFlow[status as OrderStatus]!)}
+                        onClick={() =>
+                          handleUpdateStatus(order, statusFlow[status as OrderStatus]!)
+                        }
                         disabled={updatingIds.has(order.id)}
                         className="mt-2"
                       >
-                        {updatingIds.has(order.id) ? "Processing..." : `Mark as ${statusFlow[status as OrderStatus]}`}
+                        {updatingIds.has(order.id)
+                          ? "Processing..."
+                          : `Mark as ${statusFlow[status as OrderStatus]}`}
                       </Button>
                     )}
                   </div>

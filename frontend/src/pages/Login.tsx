@@ -36,13 +36,13 @@ const Login = () => {
       // Redirect based on role
       switch (user.role) {
         case 'customer':
-          navigate('/menu'); // Customer dashboard/menu
+          navigate('/menu');
           break;
         case 'staff':
-          navigate('/staff/OrderPage'); // Staff POS page
+          navigate('/staff/OrderPage');
           break;
         case 'admin':
-          navigate('/admin/dashboard'); // Admin dashboard
+          navigate('/admin/dashboard');
           break;
         default:
           navigate('/login');
@@ -97,13 +97,20 @@ const Login = () => {
             </form>
 
             {activeTab === 'customer' && (
-              <div className="mt-4 text-center text-sm">
-                Don't have an account?{' '}
-                <Link to="/register" className="text-primary hover:underline">
-                  Sign up
-                </Link>
-              </div>
-            )}
+              <div className="mt-4 text-center text-sm space-y-1">
+                <div>
+                  Don't have an account?{' '}
+                  <Link to="/register" className="text-primary hover:underline">
+                    Sign up
+                  </Link>
+                </div>
+                <div className="text-ms"> {/* <-- smaller text */}
+      <Link to="/forgot-password" className="text-primary hover:underline">
+        Forgot password?
+      </Link>
+    </div>
+  </div>
+)}
           </Tabs>
         </CardContent>
       </Card>

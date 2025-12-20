@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useAuth, UserRole } from '@/contexts/AuthContext';
-import { Eye, EyeOff } from 'lucide-react'; // Eye icons
+import { Eye, EyeOff } from 'lucide-react';
 
 const Register = () => {
   const [name, setName] = useState('');
@@ -52,11 +52,19 @@ const Register = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Full Name */}
             <div>
               <Label htmlFor="name">Full Name</Label>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+              <Input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
             </div>
 
+            {/* Email */}
             <div>
               <Label htmlFor="email">Email</Label>
               <Input
@@ -68,8 +76,8 @@ const Register = () => {
               />
             </div>
 
-            {/* Password Field with Eye */}
-            <div className="relative">
+            {/* Password with embedded eye icon */}
+            <div>
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
@@ -77,20 +85,26 @@ const Register = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="pr-10"
+                icon={
+                  showPassword ? (
+                    <EyeOff
+                      size={20}
+                      className="cursor-pointer text-gray-500 hover:text-orange-500"
+                      onClick={() => setShowPassword(false)}
+                    />
+                  ) : (
+                    <Eye
+                      size={20}
+                      className="cursor-pointer text-gray-500 hover:text-orange-500"
+                      onClick={() => setShowPassword(true)}
+                    />
+                  )
+                }
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                className="absolute right-2 top-9 text-gray-500 hover:text-orange-500 transition-colors"
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
             </div>
 
-            {/* Confirm Password Field with Eye */}
-            <div className="relative">
+            {/* Confirm Password with embedded eye icon */}
+            <div>
               <Label htmlFor="confirmPassword">Confirm Password</Label>
               <Input
                 id="confirmPassword"
@@ -98,18 +112,25 @@ const Register = () => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className="pr-10"
+                icon={
+                  showConfirmPassword ? (
+                    <EyeOff
+                      size={20}
+                      className="cursor-pointer text-gray-500 hover:text-orange-500"
+                      onClick={() => setShowConfirmPassword(false)}
+                    />
+                  ) : (
+                    <Eye
+                      size={20}
+                      className="cursor-pointer text-gray-500 hover:text-orange-500"
+                      onClick={() => setShowConfirmPassword(true)}
+                    />
+                  )
+                }
               />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword((prev) => !prev)}
-                className="absolute right-2 top-9 text-gray-500 hover:text-orange-500 transition-colors"
-                tabIndex={-1}
-              >
-                {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
             </div>
 
+            {/* Submit */}
             <Button type="submit" className="w-full">
               Sign Up
             </Button>

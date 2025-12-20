@@ -3,7 +3,8 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const cron = require("node-cron");
-const pool = require("./db"); // assuming you have a db.js exporting a MySQL pool
+const pool = require("./db"); 
+
 
 const app = express();
 
@@ -28,10 +29,8 @@ const inventoryRoutes = require('./routes/inventoryRoutes');
 app.use('/api/inventory', inventoryRoutes);
 
 
-// Default route
-app.get("/", (req, res) => {
-  res.send("API is running");
-});
+
+
 
 // -------------------------
 // DAILY RESET (MIDNIGHT)

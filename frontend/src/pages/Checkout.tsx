@@ -92,7 +92,7 @@ const Checkout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen py-8">
+    <div className="min-h-screen py-8 bg-background text-foreground">
       <div className="container mx-auto px-4 max-w-4xl">
         <h1 className="text-3xl font-bold mb-8">Checkout</h1>
         <form onSubmit={handleSubmit}>
@@ -100,16 +100,36 @@ const Checkout: React.FC = () => {
             <div className="lg:col-span-2 space-y-6">
               {/* Delivery Info */}
               <Card>
-                <CardHeader><CardTitle>Delivery Information</CardTitle></CardHeader>
+                <CardHeader>
+                  <CardTitle>Delivery Information</CardTitle>
+                </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
-                    <div><Label>First Name</Label><Input name="firstName" required /></div>
-                    <div><Label>Last Name</Label><Input name="lastName" required /></div>
+                    <div>
+                      <Label htmlFor="firstName">First Name</Label>
+                      <Input
+                        id="firstName"
+                        name="firstName"
+                        placeholder="Juan"
+                        className="border border-input focus:border-primary focus:ring-primary"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="lastName">Last Name</Label>
+                      <Input
+                        id="lastName"
+                        name="lastName"
+                        placeholder="Dela Cruz"
+                        className="border border-input focus:border-primary focus:ring-primary"
+                        required
+                      />
+                    </div>
                   </div>
 
-                  <Label>Phone Number</Label>
+                  <Label htmlFor="phone">Phone Number</Label>
                   <div className="flex">
-                    <span className="inline-flex items-center px-3 border border-r-0 rounded-l-md bg-card text-white space-x-2">
+                    <span className="inline-flex items-center px-3 border border-r-0 rounded-l-md bg-muted text-muted-foreground space-x-2">
                       <img
                         src="https://upload.wikimedia.org/wikipedia/commons/9/99/Flag_of_the_Philippines.svg"
                         alt="Philippines Flag"
@@ -118,66 +138,110 @@ const Checkout: React.FC = () => {
                       <span>+63</span>
                     </span>
                     <Input
+                      id="phone"
                       name="phone"
                       value={phone.slice(3)}
                       onChange={(e) => setPhone("+63" + e.target.value)}
+                      placeholder="9123456789"
                       required
-                      className="rounded-l-none flex-1"
+                      className="rounded-l-none flex-1 border border-input focus:border-primary focus:ring-primary"
                     />
                   </div>
 
-                  <Label>Street / House No.</Label>
-                  <Input name="address" required />
+                  <Label htmlFor="address">Street / House No.</Label>
+                  <Input
+                    id="address"
+                    name="address"
+                    placeholder="123 Sample St."
+                    className="border border-input focus:border-primary focus:ring-primary"
+                    required
+                  />
 
                   <div className="grid sm:grid-cols-2 gap-4 mt-2">
-                    <div><Label>City / Municipality</Label><Input name="city" defaultValue="Davao City" required /></div>
-                    <div><Label>Province</Label><Input name="province" defaultValue="Davao del Sur" required /></div>
+                    <div>
+                      <Label htmlFor="city">City / Municipality</Label>
+                      <Input
+                        id="city"
+                        name="city"
+                        defaultValue="Davao City"
+                        className="border border-input focus:border-primary focus:ring-primary"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="province">Province</Label>
+                      <Input
+                        id="province"
+                        name="province"
+                        defaultValue="Davao del Sur"
+                        className="border border-input focus:border-primary focus:ring-primary"
+                        required
+                      />
+                    </div>
                   </div>
 
                   <div className="mt-4">
-                    <Label>Barangay</Label>
+                    <Label htmlFor="barangay">Barangay</Label>
                     <select
+                      id="barangay"
                       name="barangay"
                       required
-                      className="w-full h-11 px-3 rounded-md border border-input text-white"
-                      style={{ backgroundColor: "#3A1F0B" }}
+                      className="w-full h-11 px-3 rounded-md border border-input bg-background text-foreground focus:border-primary focus:ring-primary"
                     >
                       <option value="">Select Barangay</option>
                       {barangays.map((b) => (
-                        <option key={b.value} value={b.value}>{b.label}</option>
+                        <option key={b.value} value={b.value}>
+                          {b.label}
+                        </option>
                       ))}
                     </select>
                   </div>
 
                   <div className="mt-2">
-                    <Label>Postal Code</Label>
-                    <Input name="postal" defaultValue="8000" required />
+                    <Label htmlFor="postal">Postal Code</Label>
+                    <Input
+                      id="postal"
+                      name="postal"
+                      defaultValue="8000"
+                      className="border border-input focus:border-primary focus:ring-primary"
+                      required
+                    />
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Payment */}
+              {/* Payment Method */}
               <Card>
-                <CardHeader><CardTitle>Payment Method</CardTitle></CardHeader>
+                <CardHeader>
+                  <CardTitle>Payment Method</CardTitle>
+                </CardHeader>
                 <CardContent className="space-y-4">
                   <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
                     <label className="flex items-center space-x-3 mb-2 cursor-pointer">
-                      <RadioGroupItem value="cash" /><span className="text-white">Cash on Delivery</span>
+                      <RadioGroupItem value="cash" />
+                      <span className="text-foreground">Cash on Delivery</span>
                     </label>
                     <label className="flex items-center space-x-3 mb-2 cursor-pointer">
-                      <RadioGroupItem value="gcash" /><span className="text-white">GCash</span>
+                      <RadioGroupItem value="gcash" />
+                      <span className="text-foreground">GCash</span>
                     </label>
                   </RadioGroup>
 
                   {paymentMethod === "gcash" && (
                     <div className="mt-4 flex flex-col items-center space-y-4">
-                      <img src={GCashQR} alt="GCash QR" className="w-48 h-48 rounded-md object-contain" />
+                      <img
+                        src={GCashQR}
+                        alt="GCash QR"
+                        className="w-48 h-48 rounded-md object-contain"
+                      />
 
-                      <Label>Enter Reference Number</Label>
+                      <Label htmlFor="gcashRef">Enter Reference Number</Label>
                       <Input
+                        id="gcashRef"
                         value={gcashRef}
                         onChange={(e) => setGcashRef(e.target.value)}
                         placeholder="Ex: 5X3D18K"
+                        className="border border-input focus:border-primary focus:ring-primary"
                         required
                       />
                     </div>
@@ -189,7 +253,9 @@ const Checkout: React.FC = () => {
             {/* Order Summary */}
             <div>
               <Card className="sticky top-20">
-                <CardHeader><CardTitle>Order Summary</CardTitle></CardHeader>
+                <CardHeader>
+                  <CardTitle>Order Summary</CardTitle>
+                </CardHeader>
                 <CardContent className="space-y-4">
                   {items.map((item) => (
                     <div key={item.id} className="flex justify-between text-sm">

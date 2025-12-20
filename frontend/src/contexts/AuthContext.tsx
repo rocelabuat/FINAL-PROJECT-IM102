@@ -13,10 +13,12 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  loading: boolean; // ✅ added
+  loading: boolean;
   login: (email: string, password: string, role: UserRole) => Promise<User>;
   logout: () => Promise<void>;
   register: (name: string, email: string, password: string, role: UserRole) => Promise<void>;
+  forgotPassword: (email: string) => Promise<{ message: string }>;
+  resetPassword: (email: string, token: string, newPassword: string) => Promise<{ message: string }>;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -26,13 +28,13 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/auth'
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true); // ✅ loading state
+  const [loading, setLoading] = useState(true);
 
-  // Load user from localStorage on mount
+  // Load user from localStorage
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (stored) setUser(JSON.parse(stored));
-    setLoading(false); // ✅ done loading
+    setLoading(false);
   }, []);
 
   // Persist user session
@@ -41,7 +43,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     else localStorage.removeItem('user');
   }, [user]);
 
-  // ✅ LOGIN
+  // ----------------------
+  // LOGIN
+  // ----------------------
   const login = async (email: string, password: string, role: UserRole): Promise<User> => {
     try {
       const res = await fetch(`${API_URL}/login`, {
@@ -67,7 +71,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // ✅ LOGOUT
+  // ----------------------
+  // LOGOUT
+  // ----------------------
   const logout = async () => {
     if (user) {
       try {
@@ -84,7 +90,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('user');
   };
 
-  // ✅ REGISTER
+  // ----------------------
+  // REGISTER
+  // ----------------------
   const register = async (name: string, email: string, password: string, role: UserRole) => {
     try {
       const res = await fetch(`${API_URL}/register`, {
@@ -105,8 +113,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // ----------------------
+  // FORGOT PASSWORD
+  // ----------------------
+  const forgotPassword = async (email: string) => {
+    const res = await fetch(`${API_URL}/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || 'Failed to send reset email.');
+    }
+    return res.json();
+  };
+
+  // ----------------------
+  // RESET PASSWORD
+  // ----------------------
+  const resetPassword = async (email: string, token: string, newPassword: string) => {
+    const res = await fetch(`${API_URL}/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, token, newPassword }),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || 'Failed to reset password.');
+    }
+    return res.json();
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, logout, register, forgotPassword, resetPassword }}
+    >
       {children}
     </AuthContext.Provider>
   );
