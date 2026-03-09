@@ -12,7 +12,7 @@ import { useOrder } from "@/contexts/OrderContext";
 import { toast } from "sonner";
 
 import GCashQR from "@/assets/qr/qr_code.jpg";
-import barangays from "@/data/davaoBarangays.json";
+import barangays from "../data/davaoBarangays.json";
 
 const TAX_RATE = 0.12;
 
